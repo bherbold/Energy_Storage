@@ -7,13 +7,13 @@ using DataFrames
 println("--- Start Program ---")
 
 # GENERAL PARAMETERS
-tfinal = 10;
+tfinal = 1000;
 dt = 1;                     # (h) timestep
 years=15;
 efficiency_bat = 0.97;      # check with professor
 eta_charge = 0.95;          # check with professor
 eta_discharge = 0.95;       # check with professor
-SOC_bat_MAX = 1;            # (-) - Maximum SOC for batteries
+SOC_bat_MAX = 0.95;            # (-) - Maximum SOC for batteries
 SOC_bat_MIN = 0.35;         # (-) - Minimum SOC for batteries
 
 # COST PARAMETERS
@@ -23,6 +23,9 @@ solar_capex = 1065e3;                       # Capex Solar
 solar_opex = 14800*years;                   # Opex Solar
 bat_capex = 600*1000;                       # Capex Battery
 bat_opex = 7240*years;                      # Opex Battery
+#bat_capex = 600;                       # Capex Battery
+#bat_opex = 7*years;                      # Opex Battery
+bat_opex_factor = 0.02;                     # percentage of energy capacity
 
 # DEMAND PARAMETERS
 demand_t = CSV.read("data/Cornell_heating_load_2017.csv", DataFrame);
@@ -51,7 +54,7 @@ m = Model(Ipopt.Optimizer)
 
 # OBJECTIVE FUNCTION
 
-@objective(m, Min, diesel_capex*diesel_capacity + sum(diesel_opex*diesel_generation_t[1:tfinal]) + sum(solar_opex*solar_generation_t[1:tfinal]) + solar_capex + bat_opex*battery_energy_capacity + bat_capex);
+@objective(m, Min, diesel_capex*diesel_capacity + sum(diesel_opex*diesel_generation_t[1:tfinal]) + solar_opex*solar_capacity+ solar_capacity*solar_capex + bat_opex * (battery_energy_capacity) + bat_capex*battery_energy_capacity);
 
 # CONSTRAINT 1: DIESEL GENERATION FOR ANY HOUR MUST BE LESS THAN MAX CAPACITY
 for ti = 1:tfinal
@@ -77,7 +80,7 @@ end
 @NLconstraint(m, battery_power_capacity == 0.5*battery_energy_capacity);
 
 # CONSTRAINTS 6: STATE OF CHARGE TRACKING
-@NLconstraint(m, SOC_battery[1] == SOC_ini);
+@NLconstraint(m, SOC_battery[1] == SOC_ini + (((eta_charge*charge_battery_t[1])-(discharge_battery_t[1]/eta_discharge))*dt)/battery_energy_capacity);
 
 for ti = 2:tfinal
     @NLconstraint(m, SOC_battery[ti] == SOC_battery[ti-1] + (((eta_charge*charge_battery_t[ti])-(discharge_battery_t[ti]/eta_discharge))*dt)/battery_energy_capacity);
@@ -118,7 +121,11 @@ diesel_gen_opt = JuMP.value.(diesel_generation_t)
 solar_cap_opt = JuMP.value.(solar_capacity)
 solar_cap_opt_list = zeros(tfinal)
 solar_cap_opt_list[1] = solar_cap_opt
-solar_gen_opt = JuMP.value.(solar_generation_t)
+solar_gen_opt = zeros(tfinal)
+
+for i = 1:tfinal
+    solar_gen_opt[i] = JuMP.value.(solar_generation_t[i]) * JuMP.value.(solar_capacity)
+end
 
 #solar_opt = DataFrame(Solar_Capacity_MW = solar_cap_opt_list, Solar_generation_in_hour=solar_gen_opt)
 
@@ -129,16 +136,23 @@ batt_Ecap_opt_list = zeros(tfinal)
 batt_Ecap_opt_list[1] = batt_Ecap_opt
 batt_Pcap_opt = JuMP.value.(battery_power_capacity)
 batt_Pcap_opt_list = zeros(tfinal)
-batt_Ecap_opt_list[1] = batt_Pcap_opt
+batt_Pcap_opt_list[1] = batt_Pcap_opt
 batt_charge_opt = JuMP.value.(charge_battery_t)
 batt_discharge_opt = JuMP.value.(discharge_battery_t)
 batt_SOC_opt = JuMP.value.(SOC_battery)
 
 #batt_opt = DataFrame(Battery_Energy_Cap_MWh = batt_Ecap_opt_list,  Battery_Power_Cap_MWh = batt_Pcap_opt_list, Battery_Charge_Cap_MW =batt_charge_opt, Battery_Disharge_Cap_MW =batt_discharge_opt, Battery_SOC =  batt_SOC_opt)
 
-overall_opt = DataFrame(hour= 1:tfinal,Diesel_Capacity_MW = diesel_cap_opt_list, Diesel_generation_in_hour=diesel_gen_opt,Solar_Capacity_MW = solar_cap_opt_list, Solar_generation_in_hour=solar_gen_opt,Battery_Energy_Cap_MWh = batt_Ecap_opt_list,  Battery_Power_Cap_MWh = batt_Pcap_opt_list, Battery_Charge_Cap_MW =batt_charge_opt, Battery_Disharge_Cap_MW =batt_discharge_opt, Battery_SOC =  batt_SOC_opt)
+#demand_t
+demand_out = zeros(tfinal)
 
-CSV.write("results/Optimal_Values.csv", overall_opt)
+for ti = 1:tfinal
+    demand_out[ti] = demand_t[ti,2]
+end
+
+overall_opt = DataFrame(hour= 1:tfinal,Demand_MW = demand_out,Diesel_Capacity_MW = diesel_cap_opt_list, Diesel_generation_in_hour=diesel_gen_opt,Solar_Capacity_MW = solar_cap_opt_list, Solar_generation_in_hour=solar_gen_opt,Battery_Energy_Cap_MWh = batt_Ecap_opt_list,  Battery_Power_Cap_MWh = batt_Pcap_opt_list, Battery_Charge_Cap_MW =batt_charge_opt, Battery_Disharge_Cap_MW =batt_discharge_opt, Battery_SOC =  batt_SOC_opt)
+
+CSV.write("results/Optimal_Values_COST.csv", overall_opt)
 
 
 ##### CHECK DATA RESULTS ON CONSOL #####
@@ -147,3 +161,5 @@ println("Diesel Cap: ")
 println(JuMP.value.(diesel_capacity));
 println("Battery Energy Cap: ")
 println(JuMP.value.(battery_energy_capacity));
+println("Solar Cap: ")
+println(JuMP.value.(solar_capacity));
