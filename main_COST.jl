@@ -3,38 +3,50 @@ using Ipopt, JuMP
 using Dates
 using CSV
 using DataFrames
+#using DateTime
 
 println("--- Start Program ---")
 
 # GENERAL PARAMETERS
-tfinal = 1000;
+tfinal = 10;
 dt = 1;                     # (h) timestep
 years=15;
-efficiency_bat = 0.97;      # check with professor
-eta_charge = 0.95;          # check with professor
-eta_discharge = 0.95;       # check with professor
-SOC_bat_MAX = 0.95;            # (-) - Maximum SOC for batteries
-SOC_bat_MIN = 0.35;         # (-) - Minimum SOC for batteries
+efficiency_bat = 0.93;      # check with professor
+eta_charge = 0.93;          # check with professor
+eta_discharge = 0.93;       # check with professor
+SOC_bat_MAX = 0.9;            # (-) - Maximum SOC for batteries
+SOC_bat_MIN = 0.10;         # (-) - Minimum SOC for batteries
 
 # COST PARAMETERS
-diesel_capex = 823e3;                       # Capex diesel
-diesel_opex = 150 *years;                   # Opex diesel
-solar_capex = 1065e3;                       # Capex Solar 
-solar_opex = 14800*years;                   # Opex Solar
-bat_capex = 600*1000;                       # Capex Battery
-bat_opex = 7240*years;                      # Opex Battery
-#bat_capex = 600;                       # Capex Battery
-#bat_opex = 7*years;                      # Opex Battery
-bat_opex_factor = 0.02;                     # percentage of energy capacity
+life_diesel = 25;       #years -> needs to be added when over 25 years
+diesel_capex = 1092.5;                       # Capex diesel €/KW
+diesel_opex_var = 0.31179 ;                 # Opex diesel €/kwh
+
+life_solar = 25;                           #years -> needs to be added when over 25 years
+solar_capex = 1694.8;                       # Capex Solar €/kw
+solar_opex = 18.05*years;                   # Opex Solar €/kw*year
+#bat_capex = 600*1000;                       # Capex Battery
+#bat_opex = 7240*years;                      # Opex Battery
+
+life_bat = 15;
+bat_capex = 294;                     # Capex Battery €/KW*h and 
+bat_opex = 9.9 * years;                      # Opex Battery €/KW*years
+#bat_opex_factor = 0.02;                     # percentage of energy capacity
 
 # DEMAND PARAMETERS
-demand_t = CSV.read("data/Cornell_heating_load_2017.csv", DataFrame);
+df = DateFormat("yyyy-mm-dd HH:MM:SS");
+
+demand_t = CSV.read("data/Hourly_Load_2018_Tool_Manufacturer.csv", DataFrame);
 
 # GENERATION PARAMETERS
-solar_available = CSV.read("data/PV_Gen_CatalunyA_1KW.csv", DataFrame);
 
+solar_available = CSV.read("data/PV_Germany.csv", DataFrame);
+println(first(solar_available,2))
+solar_available.time = map(row -> DateTime(row, df), solar_available.time)
+filter!(x -> Dates.year(x.time) == 2019, solar_available) # only 2019 data
+println(first(solar_available,20))
 ## INITIAL CONDITIONS
-SOC_ini = 0.6;                     # (p.u) - Initial state of charge of the battery
+SOC_ini = 0.5;                     # (p.u) - Initial state of charge of the battery
 
 # Model
 
@@ -48,13 +60,19 @@ m = Model(Ipopt.Optimizer)
 @variable(m, solar_capacity >= 0)  # (MWh) solar capacity
 @variable(m, battery_energy_capacity >= 0)  # (MWh) battery capacity
 @variable(m, battery_power_capacity >= 0)  # (MW) battery capacity
+@variable(m, battery_hours, lower_bound=2,upper_bound=10)  # (MW) battery capacity
 @variable(m, charge_battery_t[1:tfinal] >= 0)  # (MW) - Charge power for the battery
 @variable(m, discharge_battery_t[1:tfinal] >= 0)  # (MW) - Discharge power for the battery
 @variable(m, SOC_battery[1:tfinal] >= 0)  # (p.u) - State of charge of the battery 
 
 # OBJECTIVE FUNCTION
 
-@objective(m, Min, diesel_capex*diesel_capacity + sum(diesel_opex*diesel_generation_t[1:tfinal]) + solar_opex*solar_capacity+ solar_capacity*solar_capex + bat_opex * (battery_energy_capacity) + bat_capex*battery_energy_capacity);
+@objective(m, Min, diesel_capex*diesel_capacity + sum(diesel_opex_var*diesel_generation_t[1:tfinal]) + solar_opex*solar_capacity+ solar_capacity*solar_capex + bat_opex *battery_power_capacity  + bat_capex*battery_power_capacity*battery_hours);
+
+#charge and discharge not at the same time
+for ti = 1:tfinal
+    #@NLconstraint(m, charge_battery_t[ti] * discharge_battery_t[ti] == 0);
+end
 
 # CONSTRAINT 1: DIESEL GENERATION FOR ANY HOUR MUST BE LESS THAN MAX CAPACITY
 for ti = 1:tfinal
@@ -63,7 +81,7 @@ end
 
 # CONSTRAINT 2: SOLAR GENERATION FOR ANY HOUR MUST BE LESS THAN MAX CAPACITY
 for ti = 1:tfinal
-    @NLconstraint(m, solar_generation_t[ti] <= solar_available[ti,3]);
+    @NLconstraint(m, solar_generation_t[ti] <= solar_available[ti,2]);
 end
 
 # CONTRAINTS 3: BATTERY CHARGE FOR ANY HOUR MUST BE LESS THAN MAX
@@ -77,7 +95,7 @@ for ti = 1:tfinal
 end
 
 # CONSTRAINT 5: DISCHARGE CAPACITY IS HALF THE BATTERY POWER CAPACITY
-@NLconstraint(m, battery_power_capacity == 0.5*battery_energy_capacity);
+@NLconstraint(m, battery_power_capacity == battery_hours*battery_energy_capacity);
 
 # CONSTRAINTS 6: STATE OF CHARGE TRACKING
 @NLconstraint(m, SOC_battery[1] == SOC_ini + (((eta_charge*charge_battery_t[1])-(discharge_battery_t[1]/eta_discharge))*dt)/battery_energy_capacity);
@@ -100,6 +118,11 @@ end
 for ti = 1:tfinal
     @NLconstraint(m, SOC_battery[ti] >= SOC_bat_MIN);
 end
+
+# initial and final SOC should be similar
+@NLconstraint(m,SOC_battery[tfinal] >= SOC_battery[1]*0.95);
+@NLconstraint(m,SOC_battery[tfinal] <= SOC_battery[1]*1.05)
+
 
 ## EXECUTION OF OPTIMIZATION PROBLEM
 optimize!(m)
@@ -156,10 +179,12 @@ CSV.write("results/Optimal_Values_COST.csv", overall_opt)
 
 
 ##### CHECK DATA RESULTS ON CONSOL #####
-
-println("Diesel Cap: ")
+i =1;
+println(i , "Diesel Cap: ")
 println(JuMP.value.(diesel_capacity));
 println("Battery Energy Cap: ")
 println(JuMP.value.(battery_energy_capacity));
+println("Battery Power Cap: ")
+println(JuMP.value.(battery_power_capacity));
 println("Solar Cap: ")
 println(JuMP.value.(solar_capacity));

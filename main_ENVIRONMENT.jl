@@ -65,9 +65,18 @@ m = Model(Ipopt.Optimizer)
 @variable(m, charge_battery_t[1:tfinal] >= 0)  # (MW) - Charge power for the battery
 @variable(m, discharge_battery_t[1:tfinal] >= 0)  # (MW) - Discharge power for the battery
 @variable(m, SOC_battery[1:tfinal] >= 0)  # (p.u) - State of charge of the battery 
+#@variable(m, chargedif[1:tfinal] >= 0)  #differnce between charge and discharge
 
 # OBJECTIVE FUNCTION
 @objective(m, Min, (diesel_manu_CO2_MW + diesel_EOL_CO2_MW)*diesel_capacity + sum(diesel_operation_CO2_MWh*diesel_generation_t[1:tfinal]) + (solar_manu_CO2_MW + solar_EOL_CO2_MW)*solar_capacity + (bat_manu_CO2_MWh + bat_EOL_CO2_MWh)*battery_energy_capacity);
+
+# Charge differnce
+
+#for i = 1:tfinal
+
+#    @NLconstraint(m, chargedif[i] == abs(charge_battery_t[i]-discharge_battery_t[i]))
+#end
+#1000*sum(chargedif[1:tfinal])
 
 # CONSTRAINT 1: DIESEL GENERATION FOR ANY HOUR MUST BE LESS THAN MAX CAPACITY
 for ti = 1:tfinal
@@ -113,6 +122,10 @@ end
 for ti = 1:tfinal
     @NLconstraint(m, SOC_battery[ti] >= SOC_bat_MIN);
 end
+
+# initial and final SOC should be similar
+@NLconstraint(m,SOC_battery[tfinal] >= SOC_battery[1]*0.95);
+@NLconstraint(m,SOC_battery[tfinal] <= SOC_battery[1]*1.05)
 
 ## EXECUTION OF OPTIMIZATION PROBLEM
 optimize!(m)
