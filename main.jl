@@ -69,7 +69,8 @@ SOC_ini = 0.5;                     # (p.u) - Initial state of charge of the batt
 
 for i = 1:2
 
-    m = Model(Ipopt.Optimizer)
+    m = direct_model(optimizer_with_attributes(Ipopt.Optimizer))
+    set_optimizer_attributes(m, "max_iter" => 8000)
 
     ## VARIABLES
 
@@ -90,34 +91,33 @@ for i = 1:2
     end
     if i == 2 #CO2 Lifetime
         # OBJECTIVE FUNCTION
+
         @objective(m, Min, (diesel_manu_CO2_kW + diesel_EOL_CO2_kW)*diesel_capacity + sum(diesel_operation_CO2_kWh*diesel_generation_t[1:tfinal]) + (solar_manu_CO2_kW + solar_EOL_CO2_kW)*solar_capacity + (bat_manu_CO2_kWh + bat_EOL_CO2_kWh)*battery_energy_capacity);
 
-    end
-
-
-    #charge and discharge not at the same time
-    for ti = 1:tfinal
-        #@NLconstraint(m, charge_battery_t[ti] * discharge_battery_t[ti] == 0);
+        #charge and discharge not at the same time
+        for ti = 1:tfinal
+            #@NLconstraint(m, charge_battery_t[ti] * discharge_battery_t[ti] == 0);
+        end
     end
 
     # CONSTRAINT 1: DIESEL GENERATION FOR ANY HOUR MUST BE LESS THAN MAX CAPACITY
     for ti = 1:tfinal
-        @NLconstraint(m, diesel_generation_t[ti] <= diesel_capacity);
+        @constraint(m, diesel_generation_t[ti] <= diesel_capacity);
     end
 
     # CONSTRAINT 2: SOLAR GENERATION FOR ANY HOUR MUST BE LESS THAN MAX CAPACITY
     for ti = 1:tfinal
-        @NLconstraint(m, solar_generation_t[ti] <= solar_available[ti,2]);
+        @constraint(m, solar_generation_t[ti] <= solar_available[ti,2]);
     end
 
     # CONTRAINTS 3: BATTERY CHARGE FOR ANY HOUR MUST BE LESS THAN MAX
     for ti = 1:tfinal
-        @NLconstraint(m, charge_battery_t[ti] <= battery_power_capacity);
+        @constraint(m, charge_battery_t[ti] <= battery_power_capacity);
     end
 
     # COSTRAINT 4: BATTERY DISCHARGE FOR ANY HOUR MUST BE LESS THAN MAX
     for ti = 1:tfinal
-        @NLconstraint(m, discharge_battery_t[ti] <= battery_power_capacity);
+        @constraint(m, discharge_battery_t[ti] <= battery_power_capacity);
     end
 
     # CONSTRAINT 5: DISCHARGE CAPACITY IS HALF THE BATTERY POWER CAPACITY
@@ -137,17 +137,17 @@ for i = 1:2
 
     # CONSTRAINT 8a: SOC LIMITS (MAXIMUM)
     for ti = 1:tfinal
-        @NLconstraint(m, SOC_bat_MAX >= SOC_battery[ti]);
+        @constraint(m, SOC_bat_MAX >= SOC_battery[ti]);
     end
 
     # CONSTRAINT 8b: SOC LIMITS (MINIMUM)
     for ti = 1:tfinal
-        @NLconstraint(m, SOC_battery[ti] >= SOC_bat_MIN);
+        @constraint(m, SOC_battery[ti] >= SOC_bat_MIN);
     end
 
     # initial and final SOC should be similar
-    @NLconstraint(m,SOC_battery[tfinal] >= SOC_battery[1]*0.95);
-    @NLconstraint(m,SOC_battery[tfinal] <= SOC_battery[1]*1.05)
+    @constraint(m,SOC_battery[tfinal] >= SOC_battery[1]*0.95);
+    @constraint(m,SOC_battery[tfinal] <= SOC_battery[1]*1.05)
 
     ## EXECUTION OF OPTIMIZATION PROBLEM
     optimize!(m)
@@ -191,6 +191,7 @@ end
     batt_Pcap_opt_list[1] = batt_Pcap_opt
     batt_charge_opt = JuMP.value.(charge_battery_t)
     batt_discharge_opt = JuMP.value.(discharge_battery_t)
+    batt_operation_opt = batt_charge_opt - batt_discharge_opt; # minus = discharge
     batt_SOC_opt = JuMP.value.(SOC_battery)
 
     #batt_opt = DataFrame(Battery_Energy_Cap_MWh = batt_Ecap_opt_list,  Battery_Power_Cap_MWh = batt_Pcap_opt_list, Battery_Charge_Cap_MW =batt_charge_opt, Battery_Disharge_Cap_MW =batt_discharge_opt, Battery_SOC =  batt_SOC_opt)
@@ -202,7 +203,7 @@ end
         demand_out[ti] = demand_t[ti,2]
     end
 
-    overall_opt = DataFrame(hour= 1:tfinal,Demand_KW = demand_out,Diesel_Capacity_KW = diesel_cap_opt_list, Diesel_generation_in_hour=diesel_gen_opt,Solar_Capacity_KW = solar_cap_opt_list, Solar_generation_in_hour=solar_gen_opt,Battery_Energy_Cap_KWh = batt_Ecap_opt_list,  Battery_Power_Cap_KWh = batt_Pcap_opt_list, Battery_Charge_Cap_KW =batt_charge_opt, Battery_Disharge_Cap_KW =batt_discharge_opt, Battery_SOC =  batt_SOC_opt)
+    overall_opt = DataFrame(hour= 1:tfinal,Demand_KW = demand_out,Diesel_Capacity_KW = diesel_cap_opt_list, Diesel_generation_in_hour=diesel_gen_opt,Solar_Capacity_KW = solar_cap_opt_list, Solar_generation_in_hour=solar_gen_opt,Battery_Energy_Cap_KWh = batt_Ecap_opt_list,  Battery_Power_Cap_KWh = batt_Pcap_opt_list, Battery_dis_charge_KW = batt_operation_opt,Battery_Charge_Cap_KW =batt_charge_opt, Battery_Disharge_Cap_KW =batt_discharge_opt, Battery_SOC =  batt_SOC_opt)
 
     
 
