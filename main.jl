@@ -23,10 +23,10 @@ diesel_capex = 1092.5;                       # Capex diesel €/KW
 diesel_opex_var = 0.31179 *years;                 # Opex diesel €/kwh
 
 diesel_liters_per_kWh = 0.338;              #Liters per kwh
-diesel_upstream_CO2_per_kWh = 0.52;         # Diesel Fuel upstream emissions in kg_CO2/MWh
+diesel_upstream_CO2_per_liter = 0.52;         # Diesel Fuel upstream emissions in kg_CO2/liter
 diesel_manu_CO2_kW = 47.84 ;                 # Manufacturing kg_CO2_eq/Mw_cap 
 diesel_EOL_CO2_kW = 0 ;                      # End-Of_Life kg_CO2_eq/Mw_cap 
-diesel_operation_CO2_kWh = (2.63) * diesel_liters_per_kWh + diesel_upstream_CO2_per_kWh;                 # CO2 per MkWH from Fuel and Upstream costs
+diesel_operation_CO2_kWh = (2.63 + diesel_upstream_CO2_per_liter) * diesel_liters_per_kWh ;                 # CO2 per MkWH from Fuel and Upstream costs
 
 
 life_solar = 25;                           #years -> needs to be added when over 25 years
