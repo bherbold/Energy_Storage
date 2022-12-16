@@ -20,7 +20,7 @@ SOC_bat_MIN = 0.10;         # (-) - Minimum SOC for batteries
 # COST PARAMETERS
 life_diesel = 25;       #years -> needs to be added when over 25 years
 diesel_capex = 1092.5;                       # Capex diesel €/KW
-diesel_opex_var = 0.31179 ;                 # Opex diesel €/kwh
+diesel_opex_var = 0.31179 *years;                 # Opex diesel €/kwh
 
 diesel_liters_per_kWh = 0.338;              #Liters per kwh
 diesel_upstream_CO2_per_kWh = 0.52;         # Diesel Fuel upstream emissions in kg_CO2/MWh
@@ -30,8 +30,10 @@ diesel_operation_CO2_kWh = (2.63) * diesel_liters_per_kWh + diesel_upstream_CO2_
 
 
 life_solar = 25;                           #years -> needs to be added when over 25 years
-solar_capex = 1694.8;                       # Capex Solar €/kw
-solar_opex = 18.05*years;                   # Opex Solar €/kw*year
+solar_capex = 1425;                       # Capex Solar €/kw
+#solar_capex = 1;                       # Capex Solar €/kw
+
+solar_opex = 16.15*years;                   # Opex Solar €/kw*year
 #bat_capex = 600*1000;                       # Capex Battery
 #bat_opex = 7240*years;                      # Opex Battery
 solar_manu_CO2_kW = 1.1 ;                    # Manufacturing kg_CO2_eq/kw_cap 
@@ -53,10 +55,10 @@ demand_t = CSV.read("data/Hourly_Load_2018_Tool_Manufacturer.csv", DataFrame);
 # GENERATION PARAMETERS
 
 solar_available = CSV.read("data/PV_Germany.csv", DataFrame);
-println(first(solar_available,2))
+#println(first(solar_available,2))
 solar_available.time = map(row -> DateTime(row, df), solar_available.time)
 filter!(x -> Dates.year(x.time) == 2019, solar_available) # only 2019 data
-println(first(solar_available,20))
+#println(first(solar_available,20))
 ## INITIAL CONDITIONS
 SOC_ini = 0.5;                     # (p.u) - Initial state of charge of the battery
 
@@ -82,11 +84,11 @@ for i = 1:2
     @variable(m, discharge_battery_t[1:tfinal] >= 0)  # (MW) - Discharge power for the battery
     @variable(m, SOC_battery[1:tfinal] >= 0)  # (p.u) - State of charge of the battery 
 
-    if i == 1
+    if i == 1 #COSTS
         # OBJECTIVE FUNCTION
         @objective(m, Min, diesel_capex*diesel_capacity + sum(diesel_opex_var*diesel_generation_t[1:tfinal]) + solar_opex*solar_capacity+ solar_capacity*solar_capex + bat_opex *battery_power_capacity  + bat_capex*battery_power_capacity*battery_hours);
     end
-    if i == 2
+    if i == 2 #CO2 Lifetime
         # OBJECTIVE FUNCTION
         @objective(m, Min, (diesel_manu_CO2_kW + diesel_EOL_CO2_kW)*diesel_capacity + sum(diesel_operation_CO2_kWh*diesel_generation_t[1:tfinal]) + (solar_manu_CO2_kW + solar_EOL_CO2_kW)*solar_capacity + (bat_manu_CO2_kWh + bat_EOL_CO2_kWh)*battery_energy_capacity);
 
@@ -200,7 +202,7 @@ end
         demand_out[ti] = demand_t[ti,2]
     end
 
-    overall_opt = DataFrame(hour= 1:tfinal,Demand_MW = demand_out,Diesel_Capacity_MW = diesel_cap_opt_list, Diesel_generation_in_hour=diesel_gen_opt,Solar_Capacity_MW = solar_cap_opt_list, Solar_generation_in_hour=solar_gen_opt,Battery_Energy_Cap_MWh = batt_Ecap_opt_list,  Battery_Power_Cap_MWh = batt_Pcap_opt_list, Battery_Charge_Cap_MW =batt_charge_opt, Battery_Disharge_Cap_MW =batt_discharge_opt, Battery_SOC =  batt_SOC_opt)
+    overall_opt = DataFrame(hour= 1:tfinal,Demand_KW = demand_out,Diesel_Capacity_KW = diesel_cap_opt_list, Diesel_generation_in_hour=diesel_gen_opt,Solar_Capacity_KW = solar_cap_opt_list, Solar_generation_in_hour=solar_gen_opt,Battery_Energy_Cap_KWh = batt_Ecap_opt_list,  Battery_Power_Cap_KWh = batt_Pcap_opt_list, Battery_Charge_Cap_KW =batt_charge_opt, Battery_Disharge_Cap_KW =batt_discharge_opt, Battery_SOC =  batt_SOC_opt)
 
     
 
