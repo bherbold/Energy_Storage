@@ -95,7 +95,7 @@ for ti = 1:tfinal
 end
 
 # CONSTRAINT 5: DISCHARGE CAPACITY IS HALF THE BATTERY POWER CAPACITY
-@NLconstraint(m, battery_power_capacity == battery_hours*battery_energy_capacity);
+@NLconstraint(m, battery_power_capacity*battery_hours == battery_energy_capacity);
 
 # CONSTRAINTS 6: STATE OF CHARGE TRACKING
 @NLconstraint(m, SOC_battery[1] == SOC_ini + (((eta_charge*charge_battery_t[1])-(discharge_battery_t[1]/eta_discharge))*dt)/battery_energy_capacity);
@@ -180,7 +180,7 @@ CSV.write("results/Optimal_Values_COST.csv", overall_opt)
 
 ##### CHECK DATA RESULTS ON CONSOL #####
 i =1;
-println(i , "Diesel Cap: ")
+println( "Diesel Cap: ")
 println(JuMP.value.(diesel_capacity));
 println("Battery Energy Cap: ")
 println(JuMP.value.(battery_energy_capacity));
