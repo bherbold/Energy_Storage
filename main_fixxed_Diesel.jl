@@ -62,7 +62,7 @@ filter!(x -> Dates.year(x.time) == 2019, solar_available) # only 2019 data
 #println(first(solar_available,20))
 ## INITIAL CONDITIONS
 SOC_ini = 0.5;                     # (p.u) - Initial state of charge of the battery
-
+diesel_capacity = 91;
 
 # Model
 
@@ -76,7 +76,7 @@ for i = 1:2
     ## VARIABLES
 
     @variable(m, diesel_generation_t[1:tfinal] >= 0)  # (MW) diesel gen for each time step t
-    @variable(m, diesel_capacity >= 0)  # (MWh) diesel capacity
+    #@variable(m, diesel_capacity >= 0)  # (MWh) diesel capacity
     @variable(m, solar_generation_t[1:tfinal] >= 0)  # (MW) solar gen for each time step t
     @variable(m, solar_capacity >= 0)  # (MWh) solar capacity
     @variable(m, battery_energy_capacity >= 0)  # (MWh) battery capacity
@@ -224,12 +224,12 @@ end
 
     if i == 1
 
-        CSV.write("results/Optimal_Values_COST.csv", overall_opt)
+        CSV.write("results/Optimal_Values_COST_fixed_diesel.csv", overall_opt)
 
     end
     if i == 2
 
-        CSV.write("results/Optimal_Values_ENV.csv", overall_opt)
+        CSV.write("results/Optimal_Values_ENV_fixed_diesel.csv", overall_opt)
 
     end
 
